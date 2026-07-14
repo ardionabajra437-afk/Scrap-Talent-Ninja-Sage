@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SW Scraper</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    }
+    .container { width: 460px; padding: 32px; }
+    h1 { font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
+    .subtitle { font-size: 13px; color: #64748b; margin-bottom: 28px; }
+    .squads { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 24px; }
+    .squad { text-align: center; padding: 10px 4px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+    .squad.assault { background: #450a0a; color: #fca5a5; }
+    .squad.ambush { background: #1e3a5f; color: #93c5fd; }
+    .squad.medic { background: #064e3b; color: #6ee7b7; }
+    .squad.kage { background: #2e1065; color: #c4b5fd; }
+    .squad.hq { background: #451a03; color: #fcd34d; }
+    .squad .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+    .btn {
+      width: 100%; padding: 14px; font-size: 15px; font-weight: 600; color: #fff;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; border-radius: 10px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,0.4); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .progress-box {
+      margin-top: 20px; background: #1e293b; border-radius: 8px; padding: 14px 16px; min-height: 48px;
+    }
+    .progress-label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+    .progress-text {
+      font-size: 13px; color: #94a3b8;
+      font-family: 'SF Mono', 'Cascadia Code', monospace;
+    }
+    .progress-text.done { color: #34d399; font-weight: 600; }
+    .progress-text.error { color: #f87171; }
+    .bar { height: 3px; background: #1e293b; border-radius: 2px; margin-top: 10px; overflow: hidden; }
+    .bar-fill {
+      height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6);
+      border-radius: 2px; width: 0%; transition: width 0.3s;
+    }
+    .bar-fill.indeterminate { width: 100%; animation: indeterminate 1.5s infinite; }
+    @keyframes indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚔ Shadow War Talent Scraper</h1>
+    <p class="subtitle">5 squads × 50 players</p>
+    <div class="squads">
+      <div class="squad assault"><span class="icon">⚔</span>Assault</div>
+      <div class="squad ambush"><span class="icon">🗡</span>Ambush</div>
+      <div class="squad medic"><span class="icon">💚</span>Medic</div>
+      <div class="squad kage"><span class="icon">🌑</span>Kage</div>
+      <div class="squad hq"><span class="icon">🏰</span>HQ</div>
+    </div>
+    <button class="btn" id="scrapeBtn" onclick="startScrape()">Scrape & Generate XLSX</button>
+    <div class="progress-box">
+      <div class="progress-label">Status</div>
+      <div class="progress-text" id="progressText">Ready</div>
+      <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+    </div>
+  </div>
+  <script>
+    const TAURI = window.__TAURI__;
+    let polling = false;
+
+    function setText(t, cls) {
+      const el = document.getElementById('progressText');
+      el.textContent = t;
+      el.className = 'progress-text' + (cls ? ' ' + cls : '');
+    }
+
+    async function pollProgress() {
+      if (!polling) return;
+      try {
+        const p = await TAURI.core.invoke('get_progress');
+        if (p) setText(p);
+      } catch {}
+      setTimeout(pollProgress, 500);
+    }
+
+    async function startScrape() {
+      const btn = document.getElementById('scrapeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Scraping...';
+      setText('Starting...');
+      document.getElementById('barFill').className = 'bar-fill indeterminate';
+
+      polling = true;
+      pollProgress();
+
+      try {
+        const result = await TAURI.core.invoke('scrape_sw');
+        polling = false;
+        setText(`Done! ${result.total_players} players → ${result.output_path}`, 'done');
+        document.getElementById('barFill').className = 'bar-fill';
+        document.getElementById('barFill').style.width = '100%';
+      } catch (e) {
+        polling = false;
+        setText(`Error: ${e}`, 'error');
+        document.getElementById('barFill').className = 'bar-fill';
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Scrape & Generate XLSX';
+    }
+  </script>
+</body>
+</html>
