@@ -1,6 +1,6 @@
 # Shadow War Talent Scraper
 
-Desktop app untuk scrape data talent player Shadow War Season 26 dari [ninjajolay.id](https://ninjajolay.id/sw).
+Desktop app untuk scrape data talent player Shadow War dari [ninjajolay.id](https://ninjajolay.id/sw).
 
 ## Fitur
 
