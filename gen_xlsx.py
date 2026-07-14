@@ -46,7 +46,7 @@ def main():
                 if v and v != "None": c[v] += 1; all_c[v] += 1
 
         ws.merge_cells("A1:F1")
-        ws["A1"].value = f"SHADOW WAR S26 — {squad['name'].upper()} ({n} players)"
+        ws["A1"].value = f"SHADOW WAR — {squad['name'].upper()} ({n} players)"
         ws["A1"].font = tfont; ws["A1"].alignment = ct
         ws.row_dimensions[1].height = 30
         ws.merge_cells("A2:F2")
@@ -99,7 +99,7 @@ def main():
         ws.freeze_panes = "A6"
 
     import os
-    outpath = os.path.expanduser("~/SW_Talent_S26.xlsx")
+    outpath = os.path.expanduser("~/SW_Talent.xlsx")
     wb.save(outpath)
     print(outpath)
 

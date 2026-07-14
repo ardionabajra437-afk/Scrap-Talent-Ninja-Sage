@@ -19,7 +19,7 @@ Download `.exe` atau `.msi` dari [Releases](https://github.com/ardionabajra437-a
 | File | Isi |
 |------|-----|
 | `~/sw_data.json` | Raw data JSON per squad |
-| `~/SW_Talent_S26.xlsx` | XLSX — player list + talent count stats |
+| `~/SW_Talent.xlsx` | XLSX — player list + talent count stats |
 
 ## Tech Stack
 
