@@ -25,7 +25,7 @@ Download `.exe` atau `.msi` dari [Releases](https://github.com/ardionabajra437-a
 
 - **Backend:** Rust + Tauri 2
 - **Frontend:** Vanilla HTML/JS
-- **XLSX:** Python (openpyxl)
+- **XLSX:** Rust (rust_xlsxwriter)
 
 ## Development
 
@@ -44,4 +44,3 @@ npm run tauri build
 
 - [Node.js](https://nodejs.org/) 20+
 - [Rust](https://www.rust-lang.org/tools/install) (stable)
-- Python 3 + `openpyxl` (untuk generate XLSX)

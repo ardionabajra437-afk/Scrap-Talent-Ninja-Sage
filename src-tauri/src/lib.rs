@@ -213,12 +213,15 @@ async fn scrape_sw(state: State<'_, AppState>) -> Result<ScrapeResult, String> {
 
     *state.progress.lock().unwrap() = "Saving data...".to_string();
 
-    let json_path = format!("{}/sw_data.json", std::env::var("HOME").unwrap_or_default());
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    let json_path = format!("{}/sw_data.json", home);
     let json_str = serde_json::to_string_pretty(&all_squads).map_err(|e| e.to_string())?;
     std::fs::write(&json_path, &json_str).map_err(|e| e.to_string())?;
 
     *state.progress.lock().unwrap() = "Generating XLSX...".to_string();
-    let xlsx_path = generate_xlsx_with_python(&json_path)?;
+    let xlsx_path = generate_xlsx(&all_squads)?;
 
     *state.progress.lock().unwrap() = format!("Done! Saved to {}", xlsx_path);
 
@@ -229,22 +232,132 @@ async fn scrape_sw(state: State<'_, AppState>) -> Result<ScrapeResult, String> {
     })
 }
 
-fn generate_xlsx_with_python(json_path: &str) -> Result<String, String> {
-    let script = include_str!("../../gen_xlsx.py");
-    let output = std::process::Command::new("python3")
-        .arg("-c")
-        .arg(script)
-        .arg(json_path)
-        .output()
-        .map_err(|e| format!("Failed to run python3: {}", e))?;
+fn generate_xlsx(squads: &[SquadPlayers]) -> Result<String, String> {
+    use rust_xlsxwriter::*;
+    use std::collections::HashMap;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Python error: {}", stderr));
+    let mut wb = Workbook::new();
+
+    let squad_colors: HashMap<&str, u32> = HashMap::from([
+        ("Assault", 0xFEE2E2), ("Ambush", 0xDBEAFE), ("Medic", 0xD1FAE5),
+        ("Kage", 0xEDE9FE),    ("HQ", 0xFEF3C7),
+    ]);
+
+    let title_fmt = Format::new().set_bold().set_font_size(14).set_font_name("Calibri")
+        .set_font_color(Color::RGB(0x1F2937));
+    let subtitle_fmt = Format::new().set_italic().set_font_size(10).set_font_name("Calibri")
+        .set_font_color(Color::RGB(0x6B7280));
+    let header_fmt = Format::new().set_bold().set_font_size(11).set_font_name("Calibri")
+        .set_font_color(Color::RGB(0xFFFFFF))
+        .set_background_color(Color::RGB(0x1F2937))
+        .set_align(FormatAlign::Center);
+    let bold_fmt = Format::new().set_bold().set_font_size(10).set_font_name("Calibri")
+        .set_font_color(Color::RGB(0x374151));
+    let border_fmt = Format::new().set_border(FormatBorder::Thin)
+        .set_border_color(Color::RGB(0xD1D5DB));
+
+    for squad in squads {
+        let ws = wb.add_worksheet();
+        ws.set_name(&squad.name).map_err(|e| e.to_string())?;
+        let n = squad.players.len() as u32;
+        let color = squad_colors.get(squad.name.as_str()).copied().unwrap_or(0xFFFFFF);
+        let border_fill = border_fmt.clone().set_background_color(Color::RGB(color));
+
+        // Title
+        ws.merge_range(0, 0, 0, 5,
+            &format!("SHADOW WAR — {} ({} players)", squad.name.to_uppercase(), n),
+            &title_fmt).map_err(|e| e.to_string())?;
+        ws.set_row_height(0, 30).map_err(|e| e.to_string())?;
+
+        // Subtitle
+        ws.merge_range(1, 0, 1, 5,
+            &format!("Buff: {}  |  Debuff: {}", squad.buff, squad.debuff),
+            &subtitle_fmt).map_err(|e| e.to_string())?;
+
+        // Player List label
+        ws.write_string_with_format(3, 0, "Player List", &bold_fmt).map_err(|e| e.to_string())?;
+
+        // Column headers
+        let headers = ["Rank", "Player", "ID", "Talent 1", "Talent 2", "Talent 3"];
+        for (ci, h) in headers.iter().enumerate() {
+            ws.write_string_with_format(4, ci as u16, *h, &header_fmt).map_err(|e| e.to_string())?;
+        }
+
+        // Talent counters
+        let mut all_c: HashMap<String, u32> = HashMap::new();
+        let mut t1c: HashMap<String, u32> = HashMap::new();
+        let mut t2c: HashMap<String, u32> = HashMap::new();
+        let mut t3c: HashMap<String, u32> = HashMap::new();
+
+        // Player rows
+        let mut row = 5u32;
+        for p in &squad.players {
+            let is_even = p.rank % 2 == 0;
+            let rf = if is_even { &border_fill } else { &border_fmt };
+
+            ws.write_number_with_format(row, 0, p.rank as f64, &rf).map_err(|e| e.to_string())?;
+            ws.write_string_with_format(row, 1, &p.name, &rf).map_err(|e| e.to_string())?;
+            ws.write_string_with_format(row, 2, &p.id, &rf).map_err(|e| e.to_string())?;
+            ws.write_string_with_format(row, 3, &p.talent1, &rf).map_err(|e| e.to_string())?;
+            ws.write_string_with_format(row, 4, &p.talent2, &rf).map_err(|e| e.to_string())?;
+            ws.write_string_with_format(row, 5, &p.talent3, &rf).map_err(|e| e.to_string())?;
+
+            for (talent, counter) in [(&p.talent1, &mut t1c), (&p.talent2, &mut t2c), (&p.talent3, &mut t3c)] {
+                if !talent.is_empty() {
+                    *counter.entry(talent.clone()).or_insert(0) += 1;
+                    *all_c.entry(talent.clone()).or_insert(0) += 1;
+                }
+            }
+            row += 1;
+        }
+
+        row += 1;
+        ws.write_string_with_format(row, 0, "Talent Count", &bold_fmt).map_err(|e| e.to_string())?;
+        row += 1;
+
+        let sections: Vec<(&str, &HashMap<String, u32>, u32)> = vec![
+            ("All (T1+T2+T3)", &all_c, n * 3),
+            ("Talent 1", &t1c, n),
+            ("Talent 2", &t2c, n),
+            ("Talent 3", &t3c, n),
+        ];
+
+        for (label, counter, denom) in &sections {
+            ws.write_string_with_format(row, 0, *label, &bold_fmt).map_err(|e| e.to_string())?;
+            row += 1;
+            for (ci, h) in ["Talent", "Count", "%"].iter().enumerate() {
+                ws.write_string_with_format(row, ci as u16, *h, &header_fmt).map_err(|e| e.to_string())?;
+            }
+            row += 1;
+
+            let mut sorted: Vec<_> = counter.iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(a.1));
+
+            for (talent, count) in &sorted {
+                let pct = if *denom > 0 { **count as f64 / *denom as f64 * 100.0 } else { 0.0 };
+                ws.write_string_with_format(row, 0, talent.as_str(), &border_fmt).map_err(|e| e.to_string())?;
+                ws.write_number_with_format(row, 1, **count as f64, &border_fmt).map_err(|e| e.to_string())?;
+                ws.write_string_with_format(row, 2, &format!("{:.1}%", pct), &border_fmt).map_err(|e| e.to_string())?;
+                row += 1;
+            }
+            row += 1;
+        }
+
+        ws.set_column_width(0, 28.0).map_err(|e| e.to_string())?;
+        ws.set_column_width(1, 22.0).map_err(|e| e.to_string())?;
+        ws.set_column_width(2, 10.0).map_err(|e| e.to_string())?;
+        ws.set_column_width(3, 24.0).map_err(|e| e.to_string())?;
+        ws.set_column_width(4, 24.0).map_err(|e| e.to_string())?;
+        ws.set_column_width(5, 24.0).map_err(|e| e.to_string())?;
+        ws.set_freeze_panes(5, 0).map_err(|e| e.to_string())?;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.trim().to_string())
+    let home = std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .unwrap_or_default();
+    let outpath = format!("{}/SW_Talent.xlsx", home);
+    wb.save(&outpath).map_err(|e| e.to_string())?;
+    Ok(outpath)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
